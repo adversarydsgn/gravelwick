@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { waitUntil } from '@vercel/functions';
 import { supabase } from '@/lib/supabase/client';
 import { processMeeting } from '@/lib/pipeline/process';
 import { verifyWebhookSignature } from '@/lib/recall/client';
@@ -80,9 +81,9 @@ export async function POST(req: NextRequest) {
     // If done, kick off processing (non-blocking — return 200 immediately)
     if (ourStatus === 'processing') {
       console.log(`[webhook/bot-status] Meeting ${meeting.id} done — starting pipeline`);
-      processMeeting(meeting.id).catch((err) => {
+      waitUntil(processMeeting(meeting.id).catch((err) => {
         console.error(`[pipeline] Unhandled error for meeting ${meeting.id}:`, err);
-      });
+      }));
     }
 
     return NextResponse.json({ ok: true, meeting_id: meeting.id, status: ourStatus });
