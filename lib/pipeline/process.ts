@@ -28,8 +28,12 @@ export async function processMeeting(meetingId: string) {
     // ── Step 2: Download video from Recall.ai and upload to R2 ──────────────
     console.log(`[pipeline] Step 2: Storing video for ${meetingId}`);
     const botData = await getBotRecording(meeting.recall_bot_id);
-    const videoUrl = botData.video?.download_url ?? botData.recording_url;
-    if (!videoUrl) throw new Error('No video URL from Recall.ai');
+    // Recall.ai returns recordings[].media_shortcuts.video_mixed.data.download_url
+    const videoUrl =
+      botData.recordings?.[0]?.media_shortcuts?.video_mixed?.data?.download_url ??
+      botData.video?.download_url ??
+      botData.recording_url;
+    if (!videoUrl) throw new Error(`No video URL from Recall.ai. Bot data keys: ${Object.keys(botData).join(', ')}`);
 
     const videoBuffer = await downloadFromUrl(videoUrl);
     const videoKey = buildR2Key(meetingId, meetingDate, 'video.mp4');

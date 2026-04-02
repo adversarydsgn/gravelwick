@@ -3,6 +3,9 @@ import { supabase } from '@/lib/supabase/client';
 import { processMeeting } from '@/lib/pipeline/process';
 import { verifyWebhookSignature } from '@/lib/recall/client';
 
+// Allow up to 5 minutes for the pipeline to complete
+export const maxDuration = 300;
+
 export async function POST(req: NextRequest) {
   try {
     const rawBody = await req.text();
