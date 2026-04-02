@@ -51,8 +51,9 @@ ${params.transcript}`;
     tone_read?: string;
   };
 
+  const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
   try {
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(cleaned);
   } catch {
     throw new Error(`Claude returned invalid JSON: ${text.substring(0, 200)}`);
   }
