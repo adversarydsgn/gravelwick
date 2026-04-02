@@ -23,12 +23,6 @@ export async function scheduleBot(params: {
         waiting_room_timeout: 600,
         noone_joined_timeout: 600,
       },
-      output_media: {
-        camera: {
-          kind: 'jpeg_image',
-          config: { width: 1280, height: 720 },
-        },
-      },
     }),
   });
 
