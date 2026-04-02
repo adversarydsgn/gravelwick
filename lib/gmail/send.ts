@@ -18,7 +18,7 @@ function buildEmail(params: {
   const headers = [
     `From: Watson by Adversary <${params.from}>`,
     `To: ${params.to.join(', ')}`,
-    `Subject: ${params.subject}`,
+    `Subject: =?utf-8?B?${Buffer.from(params.subject).toString('base64')}?=`,
     'MIME-Version: 1.0',
     'Content-Type: text/html; charset=utf-8',
   ].join('\r\n');
