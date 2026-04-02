@@ -1,12 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/client';
 import { shouldSkipMeeting } from '@/lib/recall/blacklist';
-import { scheduleBot } from '@/lib/recall/client';
+import { scheduleBot, verifyWebhookSignature } from '@/lib/recall/client';
 import type { CalendarEvent } from '@/types';
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const rawBody = await req.text();
+
+    // Verify signature if secret is configured
+    const secret = process.env.RECALL_WEBHOOK_SECRET;
+    if (secret) {
+      const sig = req.headers.get('x-recall-signature') ?? '';
+      // Recall.ai sends signature as "sha256=<hex>" — strip prefix if present
+      const hexSig = sig.startsWith('sha256=') ? sig.slice(7) : sig;
+      if (!hexSig || !verifyWebhookSignature(rawBody, hexSig, secret)) {
+        console.warn('[webhook/calendar] Signature verification failed');
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    } else {
+      console.warn('[webhook/calendar] RECALL_WEBHOOK_SECRET not set — skipping signature verification');
+    }
+
+    const body = JSON.parse(rawBody);
     console.log('[webhook/calendar] Received:', JSON.stringify(body).substring(0, 300));
 
     // Extract calendar event from Recall.ai payload

@@ -1,10 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/client';
 import { processMeeting } from '@/lib/pipeline/process';
+import { verifyWebhookSignature } from '@/lib/recall/client';
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const rawBody = await req.text();
+
+    // Verify signature if secret is configured
+    const secret = process.env.RECALL_WEBHOOK_SECRET;
+    if (secret) {
+      const sig = req.headers.get('x-recall-signature') ?? '';
+      const hexSig = sig.startsWith('sha256=') ? sig.slice(7) : sig;
+      if (!hexSig || !verifyWebhookSignature(rawBody, hexSig, secret)) {
+        console.warn('[webhook/bot-status] Signature verification failed');
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    } else {
+      console.warn('[webhook/bot-status] RECALL_WEBHOOK_SECRET not set — skipping signature verification');
+    }
+
+    const body = JSON.parse(rawBody);
     console.log('[webhook/bot-status] Received:', JSON.stringify(body).substring(0, 300));
 
     const botId = body.data?.bot_id ?? body.data?.id;
