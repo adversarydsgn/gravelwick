@@ -118,7 +118,8 @@ export async function createCalendarV2(params: {
 }
 
 export async function listCalendarEvents(calendarId: string): Promise<RecallCalendarEvent[]> {
-  const url = `${RECALL_API_BASE}/calendar/events/?calendar_id=${encodeURIComponent(calendarId)}`;
+  const apiRoot = RECALL_API_BASE.replace(/\/v1\/?$/, '');
+  const url = `${apiRoot}/v2/calendar-events/?calendar_id=${encodeURIComponent(calendarId)}`;
   const res = await fetch(url, { headers: recallHeaders() });
   if (!res.ok) {
     const err = await res.text();
