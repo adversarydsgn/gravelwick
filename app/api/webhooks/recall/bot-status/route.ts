@@ -38,6 +38,13 @@ export async function POST(req: NextRequest) {
 
     // Map Recall.ai status to our status
     const statusMap: Record<string, string> = {
+      // Recall.ai event names (body.event, with bot. prefix)
+      'bot.joining_call': 'recording',
+      'bot.in_call_recording': 'recording',
+      'bot.call_ended': 'processing',
+      'bot.done': 'processing',
+      'bot.recording_done': 'processing',
+      // Status code values (body.data.status.code, no prefix)
       'joining_call': 'recording',
       'in_call_recording': 'recording',
       'call_ended': 'processing',
