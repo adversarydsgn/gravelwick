@@ -9,6 +9,7 @@ function getR2Client() {
   return new S3Client({
     region: 'auto',
     endpoint: process.env.R2_ENDPOINT,
+    forcePathStyle: true,
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
