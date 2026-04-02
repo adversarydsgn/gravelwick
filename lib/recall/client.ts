@@ -49,19 +49,18 @@ export async function getBotRecording(botId: string) {
   return res.json();
 }
 
+// Recall.ai uses Svix for webhook delivery (secret starts with whsec_)
 export function verifyWebhookSignature(
   payload: string,
-  signature: string,
+  headers: Record<string, string | null>,
   secret: string
 ): boolean {
-  // Recall.ai uses HMAC-SHA256 signatures
-  const crypto = require('crypto');
-  const expected = crypto
-    .createHmac('sha256', secret)
-    .update(payload)
-    .digest('hex');
-  return crypto.timingSafeEqual(
-    Buffer.from(signature, 'hex'),
-    Buffer.from(expected, 'hex')
-  );
+  const { Webhook } = require('svix');
+  const wh = new Webhook(secret);
+  try {
+    wh.verify(payload, headers);
+    return true;
+  } catch {
+    return false;
+  }
 }

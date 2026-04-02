@@ -7,12 +7,15 @@ export async function POST(req: NextRequest) {
   try {
     const rawBody = await req.text();
 
-    // Verify signature if secret is configured
+    // Verify Svix signature if secret is configured
     const secret = process.env.RECALL_WEBHOOK_SECRET;
     if (secret) {
-      const sig = req.headers.get('x-recall-signature') ?? '';
-      const hexSig = sig.startsWith('sha256=') ? sig.slice(7) : sig;
-      if (!hexSig || !verifyWebhookSignature(rawBody, hexSig, secret)) {
+      const svixHeaders = {
+        'svix-id': req.headers.get('svix-id'),
+        'svix-timestamp': req.headers.get('svix-timestamp'),
+        'svix-signature': req.headers.get('svix-signature'),
+      };
+      if (!verifyWebhookSignature(rawBody, svixHeaders, secret)) {
         console.warn('[webhook/bot-status] Signature verification failed');
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
