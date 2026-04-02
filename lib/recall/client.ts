@@ -88,6 +88,35 @@ export interface RecallCalendarEvent {
   status?: string;
 }
 
+export async function createCalendarV2(params: {
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+  email?: string;
+}): Promise<{ id: string; platform_email: string | null }> {
+  // V2 endpoint — strip /v1 from the configured base and use /v2
+  const v1Base = process.env.RECALL_API_BASE ?? 'https://us-west-2.recall.ai/api/v1';
+  const apiRoot = v1Base.replace(/\/v1\/?$/, '');
+  const res = await fetch(`${apiRoot}/v2/calendars/`, {
+    method: 'POST',
+    headers: recallHeaders(),
+    body: JSON.stringify({
+      platform: 'google_calendar',
+      oauth_client_id: params.clientId,
+      oauth_client_secret: params.clientSecret,
+      oauth_refresh_token: params.refreshToken,
+      ...(params.email && { oauth_email: params.email }),
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Recall.ai createCalendarV2 failed: ${res.status} ${err}`);
+  }
+
+  return res.json();
+}
+
 export async function listCalendarEvents(calendarId: string): Promise<RecallCalendarEvent[]> {
   const url = `${RECALL_API_BASE}/calendar/events/?calendar_id=${encodeURIComponent(calendarId)}`;
   const res = await fetch(url, { headers: recallHeaders() });
