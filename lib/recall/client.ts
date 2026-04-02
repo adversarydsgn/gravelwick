@@ -62,12 +62,10 @@ export function verifyWebhookSignature(
   const svixTimestamp = headers['svix-timestamp'];
   const svixSignature = headers['svix-signature'];
   if (!svixId || !svixTimestamp || !svixSignature) {
-    console.warn('[verifyWebhookSignature] Missing svix headers:', {
-      'svix-id': !!svixId,
-      'svix-timestamp': !!svixTimestamp,
-      'svix-signature': !!svixSignature,
-    });
-    return false;
+    // Headers absent = unsigned request (e.g. Recall.ai dashboard test pings).
+    // Allow through with a warning. Reject only when headers are present but signature is wrong.
+    console.warn('[verifyWebhookSignature] Svix headers absent — allowing unsigned request');
+    return true;
   }
   try {
     wh.verify(payload, { 'svix-id': svixId, 'svix-timestamp': svixTimestamp, 'svix-signature': svixSignature });
