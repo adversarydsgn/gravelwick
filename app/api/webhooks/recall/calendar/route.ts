@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/client';
 import { shouldSkipMeeting } from '@/lib/recall/blacklist';
-import { scheduleBot, verifyWebhookSignature } from '@/lib/recall/client';
+import { scheduleBot, verifyWebhookSignature, listCalendarEvents } from '@/lib/recall/client';
 import type { CalendarEvent } from '@/types';
 
 export async function POST(req: NextRequest) {
@@ -17,7 +17,6 @@ export async function POST(req: NextRequest) {
         'svix-signature': req.headers.get('svix-signature'),
       };
       if (!verifyWebhookSignature(rawBody, svixHeaders, secret)) {
-        console.warn('[webhook/calendar] Signature verification failed');
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
     } else {
@@ -25,9 +24,105 @@ export async function POST(req: NextRequest) {
     }
 
     const body = JSON.parse(rawBody);
-    console.log('[webhook/calendar] Received:', JSON.stringify(body).substring(0, 300));
+    const eventType: string = body.event ?? '';
+    console.log('[webhook/calendar] Received event:', eventType);
 
-    // Extract calendar event from Recall.ai payload
+    // calendar.update — settings changed, no action needed
+    if (eventType === 'calendar.update') {
+      return NextResponse.json({ ok: true, skipped: 'calendar_update' });
+    }
+
+    // calendar.sync_events — Recall.ai synced the calendar; fetch actual events from API
+    if (eventType === 'calendar.sync_events') {
+      const calendarId: string | undefined = body.data?.calendar_id;
+      if (!calendarId) {
+        console.warn('[webhook/calendar] calendar.sync_events missing calendar_id');
+        return NextResponse.json({ ok: true, skipped: 'no_calendar_id' });
+      }
+
+      console.log('[webhook/calendar] Fetching events for calendar:', calendarId);
+      const events = await listCalendarEvents(calendarId);
+      const now = new Date();
+      let scheduled = 0;
+      let skipped = 0;
+
+      for (const evt of events) {
+        if (!evt.meeting_url) continue;
+        if (new Date(evt.start_time) < now) continue; // ignore past events
+
+        // Skip if already scheduled
+        const { data: existing } = await supabase
+          .from('meetings')
+          .select('id, recall_bot_id')
+          .eq('calendar_event_id', evt.id)
+          .maybeSingle();
+
+        if (existing?.recall_bot_id) {
+          console.log(`[webhook/calendar] Already scheduled for event ${evt.id}, skipping`);
+          continue;
+        }
+
+        const calEvent: CalendarEvent = {
+          id: evt.id,
+          title: evt.title ?? 'Untitled Meeting',
+          start_time: evt.start_time,
+          end_time: evt.end_time,
+          meet_url: evt.meeting_url,
+          attendees: evt.attendees ?? [],
+          organizer_email: evt.organizer_email ?? '',
+          calendar_id: evt.calendar_id ?? calendarId,
+        };
+
+        const skip = await shouldSkipMeeting(calEvent);
+        if (skip) {
+          await supabase.from('meetings').upsert({
+            calendar_event_id: evt.id,
+            title: calEvent.title,
+            meeting_date: evt.start_time,
+            meet_url: evt.meeting_url,
+            status: 'skipped',
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'calendar_event_id' });
+          skipped++;
+          continue;
+        }
+
+        const bot = await scheduleBot({ meetingUrl: evt.meeting_url, joinAt: evt.start_time });
+
+        const participantInserts = calEvent.attendees.map((a) => ({
+          name: a.name ?? null,
+          email: a.email,
+          is_external: !a.email.endsWith('@adversary.design'),
+        }));
+
+        const { data: meeting } = await supabase
+          .from('meetings')
+          .upsert({
+            calendar_event_id: evt.id,
+            recall_bot_id: bot.id,
+            title: calEvent.title,
+            meeting_date: evt.start_time,
+            meet_url: evt.meeting_url,
+            status: 'scheduled',
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'calendar_event_id' })
+          .select()
+          .single();
+
+        if (meeting && participantInserts.length > 0) {
+          await supabase.from('participants').insert(
+            participantInserts.map((p) => ({ ...p, meeting_id: meeting.id }))
+          );
+        }
+
+        console.log(`[webhook/calendar] Bot ${bot.id} scheduled for "${calEvent.title}"`);
+        scheduled++;
+      }
+
+      return NextResponse.json({ ok: true, scheduled, skipped });
+    }
+
+    // Fallback: direct calendar event payload (legacy / future format)
     const event: CalendarEvent = {
       id: body.data?.calendar_event?.id ?? body.data?.id,
       title: body.data?.calendar_event?.title ?? body.data?.title ?? 'Untitled Meeting',
@@ -44,10 +139,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, skipped: 'no_meet_url' });
     }
 
-    // Check blacklist BEFORE scheduling bot
     const skip = await shouldSkipMeeting(event);
     if (skip) {
-      // Upsert meeting record as skipped
       await supabase.from('meetings').upsert({
         calendar_event_id: event.id,
         title: event.title,
@@ -56,24 +149,17 @@ export async function POST(req: NextRequest) {
         status: 'skipped',
         updated_at: new Date().toISOString(),
       }, { onConflict: 'calendar_event_id' });
-
       return NextResponse.json({ ok: true, skipped: 'blacklisted' });
     }
 
-    // Schedule Watson bot
-    const bot = await scheduleBot({
-      meetingUrl: event.meet_url,
-      joinAt: event.start_time,
-    });
+    const bot = await scheduleBot({ meetingUrl: event.meet_url, joinAt: event.start_time });
 
-    // Store participants
     const participantInserts = event.attendees.map((a) => ({
       name: a.name ?? null,
       email: a.email,
       is_external: !a.email.endsWith('@adversary.design'),
     }));
 
-    // Upsert meeting record
     const { data: meeting } = await supabase
       .from('meetings')
       .upsert({

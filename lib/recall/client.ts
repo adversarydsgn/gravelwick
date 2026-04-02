@@ -57,10 +57,47 @@ export function verifyWebhookSignature(
 ): boolean {
   const { Webhook } = require('svix');
   const wh = new Webhook(secret);
-  try {
-    wh.verify(payload, headers);
-    return true;
-  } catch {
+  // Svix requires all three headers to be non-null strings
+  const svixId = headers['svix-id'];
+  const svixTimestamp = headers['svix-timestamp'];
+  const svixSignature = headers['svix-signature'];
+  if (!svixId || !svixTimestamp || !svixSignature) {
+    console.warn('[verifyWebhookSignature] Missing svix headers:', {
+      'svix-id': !!svixId,
+      'svix-timestamp': !!svixTimestamp,
+      'svix-signature': !!svixSignature,
+    });
     return false;
   }
+  try {
+    wh.verify(payload, { 'svix-id': svixId, 'svix-timestamp': svixTimestamp, 'svix-signature': svixSignature });
+    return true;
+  } catch (err) {
+    console.warn('[verifyWebhookSignature] Verification threw:', (err as Error).message);
+    return false;
+  }
+}
+
+export interface RecallCalendarEvent {
+  id: string;
+  title: string;
+  start_time: string;
+  end_time: string;
+  meeting_url: string | null;
+  attendees: Array<{ email: string; name?: string }>;
+  organizer_email: string;
+  calendar_id: string;
+  status?: string;
+}
+
+export async function listCalendarEvents(calendarId: string): Promise<RecallCalendarEvent[]> {
+  const url = `${RECALL_API_BASE}/calendar/events/?calendar_id=${encodeURIComponent(calendarId)}`;
+  const res = await fetch(url, { headers: recallHeaders() });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Recall.ai listCalendarEvents failed: ${res.status} ${err}`);
+  }
+  const data = await res.json();
+  // Recall.ai returns paginated results or a plain array
+  return (data.results ?? data) as RecallCalendarEvent[];
 }
