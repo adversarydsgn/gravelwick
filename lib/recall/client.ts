@@ -1,4 +1,4 @@
-const RECALL_API_BASE = 'https://api.recall.ai/api/v1';
+const RECALL_API_BASE = process.env.RECALL_API_BASE ?? 'https://us-west-2.recall.ai/api/v1';
 
 function recallHeaders() {
   return {
